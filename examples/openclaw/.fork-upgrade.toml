@@ -1,0 +1,42 @@
+# Example .fork-upgrade.toml for the OpenClaw fork.
+# Place a copy at the repo root of your fork and adjust paths to match your install.
+
+[upstream]
+remote = "upstream"
+tag_pattern = "v*"
+fetch_before = true
+
+[fork]
+origin_remote = "origin"
+branch_pattern = "agentweave/{tag}"
+
+[carry]
+manifest = ".fork-upgrade-carry.toml"
+
+[backup]
+anchor_tag = "pre-migration/{fork_branch}"
+push_anchor = true
+config_files = ["~/.openclaw/openclaw.json"]
+state_archive = { paths = ["~/.openclaw"], output = "~/openclaw-state-pre-{tag}.tgz" }
+
+[gates]
+install = "pnpm install"
+typecheck = "pnpm tsgo:core"
+test = [
+  "pnpm test src/infra/session-cost-usage.test.ts",
+  "pnpm test src/auto-reply",
+  "pnpm test src/agents/pi-embedded-runner",
+]
+build = "pnpm build"
+
+[cutover]
+restart = "systemctl --user restart openclaw-gateway"
+verify = "openclaw status"
+
+[probes]
+post_cutover = [
+  { name = "doctor-post-upgrade", cmd = "openclaw doctor --post-upgrade --json", parse = "json" },
+]
+
+[rollback]
+restart_after = true

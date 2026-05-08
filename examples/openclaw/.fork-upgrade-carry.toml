@@ -1,0 +1,14 @@
+# Example carry manifest for the OpenClaw fork.
+# Two commits over upstream as of v2026.5.7. Update SHAs when you rebase.
+
+[[commits]]
+sha = "b561bf0d71"
+subject = "fix usage.cost consistency across configured agents"
+upstream_pr = ""
+upstream_search = "fix usage.cost consistency"
+
+[[commits]]
+sha = "8761069d0d"
+subject = "diagnostics: include taskLabel in message.queued event"
+upstream_pr = ""
+upstream_search = "diagnostics include taskLabel"
