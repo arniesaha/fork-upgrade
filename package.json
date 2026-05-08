@@ -1,0 +1,24 @@
+{
+  "name": "@arniesaha/fork-upgrade",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "fork-upgrade": "./dist/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "execa": "^9.5.1",
+    "simple-git": "^3.27.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}
