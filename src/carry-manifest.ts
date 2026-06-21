@@ -101,3 +101,48 @@ export async function assertCarryShasExist(params: {
   }
   return { ok: missing.length === 0, missing };
 }
+
+export type GhSearchHit = { sha: string; url: string; subject: string };
+export type GhSearchFn = (query: string, upstreamRepo: string) => Promise<GhSearchHit[]>;
+
+export async function searchUpstreamForCarries(params: {
+  entries: CarryEntry[];
+  upstreamRepo: string;
+  ghSearch: GhSearchFn;
+}): Promise<Array<{ entry: CarryEntry; hits: GhSearchHit[] }>> {
+  const advisories: Array<{ entry: CarryEntry; hits: GhSearchHit[] }> = [];
+  for (const entry of params.entries) {
+    if (!entry.upstream_search) continue;
+    const hits = await params.ghSearch(entry.upstream_search, params.upstreamRepo);
+    if (hits.length > 0) advisories.push({ entry, hits });
+  }
+  return advisories;
+}
+
+export const ghSearchFromCli: GhSearchFn = async (query, upstreamRepo) => {
+  try {
+    const { stdout } = await execa("gh", [
+      "search",
+      "commits",
+      query,
+      "--repo",
+      upstreamRepo,
+      "--limit",
+      "3",
+      "--json",
+      "sha,url,commit",
+    ]);
+    const rows = JSON.parse(stdout) as Array<{
+      sha?: string;
+      url?: string;
+      commit?: { message?: string };
+    }>;
+    return rows.map((r) => ({
+      sha: r.sha ?? "",
+      url: r.url ?? "",
+      subject: (r.commit?.message ?? "").split("\n")[0],
+    }));
+  } catch {
+    return [];
+  }
+};
