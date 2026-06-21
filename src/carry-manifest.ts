@@ -70,3 +70,22 @@ export const ghPrStateFromCli: GhPrStateFn = async (pr, upstreamRepo) => {
     return "unknown";
   }
 };
+
+export async function assertCarryShasExist(params: {
+  repoDir: string;
+  entries: CarryEntry[];
+}): Promise<{ ok: boolean; missing: CarryEntry[] }> {
+  const missing: CarryEntry[] = [];
+  for (const entry of params.entries) {
+    try {
+      await execa(
+        "git",
+        ["rev-parse", "--verify", "--quiet", `${entry.sha}^{commit}`],
+        { cwd: params.repoDir },
+      );
+    } catch {
+      missing.push(entry);
+    }
+  }
+  return { ok: missing.length === 0, missing };
+}
