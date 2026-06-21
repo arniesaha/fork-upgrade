@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { loadConfig, substitute } from "./config.js";
-import { resolveCarryList, ghPrStateFromCli } from "./carry-manifest.js";
+import { resolveCarryList, ghPrStateFromCli, assertCarryShasExist } from "./carry-manifest.js";
 import { runBackup } from "./backup.js";
 import { branchAndCherryPick } from "./branch.js";
 import { runGates } from "./gates.js";
@@ -39,6 +39,14 @@ async function main() {
   });
   console.log(`carry kept: ${carry.kept.map((c) => c.sha).join(", ") || "(none)"}`);
   console.log(`carry landed-upstream (will skip): ${carry.landed.map((c) => c.sha).join(", ") || "(none)"}`);
+
+  const shaCheck = await assertCarryShasExist({ repoDir, entries: carry.kept });
+  if (!shaCheck.ok) {
+    console.error("preflight: these carry SHAs do not resolve to commits:");
+    for (const m of shaCheck.missing) console.error(`  ${m.sha} — ${m.subject}`);
+    console.error(`Refresh the SHAs in ${cfg.carry.manifest} (git log) before running.`);
+    process.exit(2);
+  }
 
   if (values["dry-run"]) return;
 
