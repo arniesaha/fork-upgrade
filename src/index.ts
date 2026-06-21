@@ -2,7 +2,13 @@
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { loadConfig, substitute } from "./config.js";
-import { resolveCarryList, ghPrStateFromCli, assertCarryShasExist } from "./carry-manifest.js";
+import {
+  resolveCarryList,
+  ghPrStateFromCli,
+  assertCarryShasExist,
+  searchUpstreamForCarries,
+  ghSearchFromCli,
+} from "./carry-manifest.js";
 import { runBackup } from "./backup.js";
 import { branchAndCherryPick } from "./branch.js";
 import { runGates } from "./gates.js";
@@ -47,6 +53,18 @@ async function main() {
     for (const m of shaCheck.missing) console.error(`  ${m.sha} — ${m.subject}`);
     console.error(`Refresh the SHAs in ${cfg.carry.manifest} (git log) before running.`);
     process.exit(2);
+  }
+
+  const advisories = await searchUpstreamForCarries({
+    entries: carry.kept,
+    upstreamRepo: values["upstream-repo"]!,
+    ghSearch: ghSearchFromCli,
+  });
+  for (const a of advisories) {
+    console.log(
+      `advisory: carry ${a.entry.sha} "${a.entry.subject}" may have landed upstream — ` +
+        `${a.hits.length} match(es): ${a.hits.map((h) => h.url).join(", ")}`,
+    );
   }
 
   if (values["dry-run"]) return;
