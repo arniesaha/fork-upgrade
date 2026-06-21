@@ -39,6 +39,7 @@ async function main() {
   });
   console.log(`carry kept: ${carry.kept.map((c) => c.sha).join(", ") || "(none)"}`);
   console.log(`carry landed-upstream (will skip): ${carry.landed.map((c) => c.sha).join(", ") || "(none)"}`);
+  console.log(`carry parked (disabled): ${carry.parked.map((c) => c.sha).join(", ") || "(none)"}`);
 
   const shaCheck = await assertCarryShasExist({ repoDir, entries: carry.kept });
   if (!shaCheck.ok) {
