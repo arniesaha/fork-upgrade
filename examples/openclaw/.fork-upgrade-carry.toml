@@ -83,16 +83,14 @@ upstream_search = "clientContext flows onto model.call spans"
 
 # Carry 12 is a parked WIP commit that is NOT yet PR'd on its own, but IS
 # load-bearing: the live dist/ was built with it, so it must be carried. It is
-# conceptually part of the #95608 work but is NOT itself contained in that PR.
+# conceptually part of #95608 but is NOT itself contained in that PR.
 #
-# Therefore `upstream_pr` is deliberately LEFT EMPTY: setting it to 95608 would
-# make this commit auto-skip the moment #95608 merges, silently dropping the
-# load-bearing change. It needs more than "parked" semantics -- it is un-PR'd
-# AND deployed. The proposed `enabled` carry field (tracked in issue #7) is not
-# yet implemented, so this commit is carried UNCONDITIONALLY today. Do NOT add
-# an `upstream_pr` here until the commit is genuinely upstreamed on its own.
+# It is `pin = true` so it is carried UNCONDITIONALLY and never auto-skipped,
+# even though `upstream_pr` is set for traceability. Without the pin, this commit
+# would be dropped the moment #95608 merges -- silently losing a deployed change.
 [[commits]]
 sha = "REFRESH-12"
 subject = "wip(diagnostics): clientContext stale-clear + onTrustedDiagnosticEvent wiring"
-upstream_pr = ""
-upstream_search = "clientContext stale-clear onTrustedDiagnosticEvent wiring (part of PR 95608)"
+upstream_pr = "95608"
+upstream_search = "clientContext stale-clear onTrustedDiagnosticEvent wiring"
+pin = true
