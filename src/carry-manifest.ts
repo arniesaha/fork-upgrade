@@ -8,6 +8,8 @@ const CarryEntrySchema = z.object({
   subject: z.string(),
   upstream_pr: z.string().optional().default(""),
   upstream_search: z.string().optional().default(""),
+  enabled: z.boolean().optional().default(true),
+  pin: z.boolean().optional().default(false),
 });
 
 const CarryManifestSchema = z.object({
@@ -19,6 +21,7 @@ export type CarryEntry = z.infer<typeof CarryEntrySchema>;
 export type ResolvedCarryList = {
   kept: CarryEntry[];
   landed: CarryEntry[];
+  parked: CarryEntry[];
 };
 
 export type GhPrStateFn = (
@@ -35,7 +38,16 @@ export async function resolveCarryList(params: {
   const parsed = CarryManifestSchema.parse(toml.parse(raw));
   const kept: CarryEntry[] = [];
   const landed: CarryEntry[] = [];
+  const parked: CarryEntry[] = [];
   for (const entry of parsed.commits) {
+    if (!entry.enabled) {
+      parked.push(entry);
+      continue;
+    }
+    if (entry.pin) {
+      kept.push(entry);
+      continue;
+    }
     if (entry.upstream_pr) {
       const state = await params.ghPrState(entry.upstream_pr, params.upstreamRepo);
       if (state === "merged") {
@@ -45,7 +57,7 @@ export async function resolveCarryList(params: {
     }
     kept.push(entry);
   }
-  return { kept, landed };
+  return { kept, landed, parked };
 }
 
 export const ghPrStateFromCli: GhPrStateFn = async (pr, upstreamRepo) => {
