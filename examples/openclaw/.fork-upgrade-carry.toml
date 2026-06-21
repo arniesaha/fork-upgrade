@@ -1,14 +1,92 @@
-# Example carry manifest for the OpenClaw fork.
-# Two commits over upstream as of v2026.5.7. Update SHAs when you rebase.
+# Carry manifest for the OpenClaw fork.
+#
+# Real carry set as of the v2026.5.26 -> v2026.6.9 upgrade run (2026-06-21):
+# 12 commits over upstream, all in the clientContext / diagnostics-otel stack.
+#
+# SHAs are fork-local and rotate on every rebase. The durable keys are `subject`
+# and `upstream_pr` -- refresh `sha` from `git log` after each rebase. The
+# placeholder SHAs below (REFRESH-*) are intentionally not real; replace them
+# with the actual short SHAs from your branch before running.
+#
+# Carries with `upstream_pr` set auto-skip once that PR merges:
+#   - #80497  onModelDiagnosticEvent (still open)
+#   - #95608  clientContext / privateData pivot (Ready for review)
 
 [[commits]]
-sha = "b561bf0d71"
-subject = "fix usage.cost consistency across configured agents"
-upstream_pr = ""
-upstream_search = "fix usage.cost consistency"
+sha = "REFRESH-01"
+subject = "feat(plugin-sdk): onModelDiagnosticEvent for trusted model.* events"
+upstream_pr = "80497"
+upstream_search = "onModelDiagnosticEvent trusted model events"
 
 [[commits]]
-sha = "8761069d0d"
-subject = "diagnostics: include taskLabel in message.queued event"
+sha = "REFRESH-02"
+subject = "docs(plugin-sdk): document onModelDiagnosticEvent integrity model"
 upstream_pr = ""
-upstream_search = "diagnostics include taskLabel"
+upstream_search = "onModelDiagnosticEvent integrity model"
+
+[[commits]]
+sha = "REFRESH-03"
+subject = "feat(gateway): forward generic clientContext onto diagnostic events"
+upstream_pr = "95608"
+upstream_search = "forward clientContext diagnostic events"
+
+[[commits]]
+sha = "REFRESH-04"
+subject = "fix(diagnostic): clear stale clientContext on no/invalid same-session run"
+upstream_pr = "95608"
+upstream_search = "clear stale clientContext same-session"
+
+[[commits]]
+sha = "REFRESH-05"
+subject = "feat(agents): stamp x-agentweave-session-key on native LLM calls"
+upstream_pr = ""
+upstream_search = "stamp x-agentweave-session-key native LLM calls"
+
+[[commits]]
+sha = "REFRESH-06"
+subject = "feat(diagnostics-otel): clientContext span-attribute mapper"
+upstream_pr = ""
+upstream_search = "clientContext span-attribute mapper"
+
+[[commits]]
+sha = "REFRESH-07"
+subject = "fix(diagnostics-otel): always encode nested clientContext values"
+upstream_pr = ""
+upstream_search = "encode nested clientContext values"
+
+[[commits]]
+sha = "REFRESH-08"
+subject = "feat(diagnostics-otel): bounded per-session clientContext cache"
+upstream_pr = ""
+upstream_search = "bounded per-session clientContext cache"
+
+[[commits]]
+sha = "REFRESH-09"
+subject = "feat(diagnostics-otel): attribute model.call spans with seeded clientContext"
+upstream_pr = ""
+upstream_search = "attribute model.call spans seeded clientContext"
+
+[[commits]]
+sha = "REFRESH-10"
+subject = "docs(diagnostics-otel): note clientContext seed-before-call ordering"
+upstream_pr = ""
+upstream_search = "clientContext seed-before-call ordering"
+
+[[commits]]
+sha = "REFRESH-11"
+subject = "test(diagnostics-otel): clientContext flows onto model.call spans"
+upstream_pr = ""
+upstream_search = "clientContext flows onto model.call spans"
+
+# Carry 12 is a parked WIP commit that is NOT yet PR'd on its own, but IS
+# load-bearing: the live dist/ was built with it, so it must be carried. It
+# belongs to the #95608 pivot and will auto-skip once that PR merges.
+#
+# It needs more than "parked" semantics: it is un-PR'd AND deployed. The
+# proposed `enabled` carry field (tracked in issue #7) is not yet implemented,
+# so this commit is carried unconditionally today. Do NOT mark it disabled.
+[[commits]]
+sha = "REFRESH-12"
+subject = "wip(diagnostics): clientContext stale-clear + onTrustedDiagnosticEvent wiring"
+upstream_pr = "95608"
+upstream_search = "clientContext stale-clear onTrustedDiagnosticEvent wiring"
