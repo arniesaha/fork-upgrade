@@ -32,5 +32,7 @@ upstream_pr = ""
 
     expect(result.kept.map((c) => c.sha)).toEqual(["bbb222"]);
     expect(result.landed.map((c) => c.sha)).toEqual(["aaa111"]);
+    // PR state must be checked against the configured upstream repo, not the fork.
+    expect(ghPrState).toHaveBeenCalledWith("1234", "openclaw/openclaw");
   });
 });

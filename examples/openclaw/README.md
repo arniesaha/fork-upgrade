@@ -41,6 +41,11 @@ The clientContext pivot from this run is upstream PR
 2. Adjust `backup.config_files` and `state_archive` if your install lives somewhere other than `~/.openclaw/`.
 3. Adjust `cutover.restart` for your platform (systemd unit on Linux, `launchctl` or `pnpm gateway:watch` elsewhere).
 4. Update `.fork-upgrade-carry.toml` to match your fork's actual carry list.
+   **The shipped manifest uses placeholder `REFRESH-NN` SHAs — these are not
+   real git objects.** Replace every one with the real short SHA from your
+   branch (`git log`) *before* running. A leftover `REFRESH-NN` hard-fails the
+   cherry-pick mid-run, after the backup and branch phases have already mutated
+   the repo (recover with `git cherry-pick --abort` and the anchor tag).
 5. From the fork checkout, run:
 
    ```

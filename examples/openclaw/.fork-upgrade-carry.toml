@@ -4,13 +4,16 @@
 # 12 commits over upstream, all in the clientContext / diagnostics-otel stack.
 #
 # SHAs are fork-local and rotate on every rebase. The durable keys are `subject`
-# and `upstream_pr` -- refresh `sha` from `git log` after each rebase. The
-# placeholder SHAs below (REFRESH-*) are intentionally not real; replace them
-# with the actual short SHAs from your branch before running.
+# and `upstream_pr` -- refresh `sha` from `git log` after each rebase.
 #
-# Carries with `upstream_pr` set auto-skip once that PR merges:
-#   - #80497  onModelDiagnosticEvent (still open)
-#   - #95608  clientContext / privateData pivot (Ready for review)
+# IMPORTANT: the placeholder SHAs below (REFRESH-*) are NOT real git objects.
+# You MUST replace every one with the actual short SHA from your branch before
+# running -- a stale REFRESH-* will hard-fail the cherry-pick mid-run, after the
+# backup/branch phases have already mutated the repo.
+#
+# Each carry's `upstream_pr` (when set) is the source of truth for auto-skip:
+# the carry is dropped once that PR merges upstream. PR numbers are checked
+# against the configured upstream repo (--upstream-repo), not the fork.
 
 [[commits]]
 sha = "REFRESH-01"
@@ -79,14 +82,17 @@ upstream_pr = ""
 upstream_search = "clientContext flows onto model.call spans"
 
 # Carry 12 is a parked WIP commit that is NOT yet PR'd on its own, but IS
-# load-bearing: the live dist/ was built with it, so it must be carried. It
-# belongs to the #95608 pivot and will auto-skip once that PR merges.
+# load-bearing: the live dist/ was built with it, so it must be carried. It is
+# conceptually part of the #95608 work but is NOT itself contained in that PR.
 #
-# It needs more than "parked" semantics: it is un-PR'd AND deployed. The
-# proposed `enabled` carry field (tracked in issue #7) is not yet implemented,
-# so this commit is carried unconditionally today. Do NOT mark it disabled.
+# Therefore `upstream_pr` is deliberately LEFT EMPTY: setting it to 95608 would
+# make this commit auto-skip the moment #95608 merges, silently dropping the
+# load-bearing change. It needs more than "parked" semantics -- it is un-PR'd
+# AND deployed. The proposed `enabled` carry field (tracked in issue #7) is not
+# yet implemented, so this commit is carried UNCONDITIONALLY today. Do NOT add
+# an `upstream_pr` here until the commit is genuinely upstreamed on its own.
 [[commits]]
 sha = "REFRESH-12"
 subject = "wip(diagnostics): clientContext stale-clear + onTrustedDiagnosticEvent wiring"
-upstream_pr = "95608"
-upstream_search = "clientContext stale-clear onTrustedDiagnosticEvent wiring"
+upstream_pr = ""
+upstream_search = "clientContext stale-clear onTrustedDiagnosticEvent wiring (part of PR 95608)"

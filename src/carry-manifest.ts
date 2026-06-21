@@ -21,7 +21,10 @@ export type ResolvedCarryList = {
   landed: CarryEntry[];
 };
 
-export type GhPrStateFn = (pr: string) => Promise<"merged" | "open" | "closed" | "unknown">;
+export type GhPrStateFn = (
+  pr: string,
+  upstreamRepo: string,
+) => Promise<"merged" | "open" | "closed" | "unknown">;
 
 export async function resolveCarryList(params: {
   manifestPath: string;
@@ -34,7 +37,7 @@ export async function resolveCarryList(params: {
   const landed: CarryEntry[] = [];
   for (const entry of parsed.commits) {
     if (entry.upstream_pr) {
-      const state = await params.ghPrState(entry.upstream_pr);
+      const state = await params.ghPrState(entry.upstream_pr, params.upstreamRepo);
       if (state === "merged") {
         landed.push(entry);
         continue;
@@ -45,9 +48,19 @@ export async function resolveCarryList(params: {
   return { kept, landed };
 }
 
-export const ghPrStateFromCli: GhPrStateFn = async (pr) => {
+export const ghPrStateFromCli: GhPrStateFn = async (pr, upstreamRepo) => {
   try {
-    const { stdout } = await execa("gh", ["pr", "view", pr, "--json", "state", "--jq", ".state"]);
+    const { stdout } = await execa("gh", [
+      "pr",
+      "view",
+      pr,
+      "--repo",
+      upstreamRepo,
+      "--json",
+      "state",
+      "--jq",
+      ".state",
+    ]);
     const trimmed = stdout.trim().toLowerCase();
     if (trimmed === "merged") return "merged";
     if (trimmed === "open") return "open";
