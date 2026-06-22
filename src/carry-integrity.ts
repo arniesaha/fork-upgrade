@@ -30,7 +30,7 @@ export async function verifyCarryIntegrity(params: {
         sha: c.sha,
         subject: c.subject,
         kind: "empty-pick",
-        detail: "cherry-pick produced no changes (already upstream or absorbed)",
+        detail: "cherry-pick applied no changes (already present upstream or absorbed)",
       });
     }
     for (const marker of c.landed_markers) {

@@ -37,7 +37,7 @@ upstream_search = "clientContext mapper"
     expect(ghSearch).toHaveBeenCalledWith("clientContext mapper", "openclaw/openclaw");
   });
 
-  it("skips carries with no upstream_search and never throws on search hits", async () => {
+  it("skips carries with no upstream_search (never invokes ghSearch)", async () => {
     const kept = await keptFrom(`
 [[commits]]
 sha = "bbb222"
