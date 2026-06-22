@@ -1,3 +1,5 @@
+import { execa } from "execa";
+
 export type LadderResolution = { base: string; ladder: string[] };
 
 export function filterAndOrderTags(
@@ -19,4 +21,45 @@ export function filterAndOrderTags(
     ladder.push(t);
   }
   return ladder;
+}
+
+export async function resolveLadder(params: {
+  repoDir: string;
+  tagPattern: string;
+  prereleasePattern: string;
+  fromTag?: string;
+  target: string;
+}): Promise<LadderResolution> {
+  const { stdout } = await execa(
+    "git",
+    ["tag", "--list", params.tagPattern, "--sort=v:refname"],
+    { cwd: params.repoDir },
+  );
+  const tags = stdout
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  let base = params.fromTag;
+  if (!base) {
+    try {
+      const res = await execa(
+        "git",
+        ["describe", "--tags", "--abbrev=0", "--match", params.tagPattern],
+        { cwd: params.repoDir },
+      );
+      base = res.stdout.trim();
+    } catch {
+      throw new Error(
+        "could not auto-detect the fork's base tag (git describe failed); pass --from-tag <tag>",
+      );
+    }
+  }
+
+  const ladder = filterAndOrderTags(tags, {
+    base,
+    target: params.target,
+    prereleasePattern: params.prereleasePattern,
+  });
+  return { base, ladder };
 }
