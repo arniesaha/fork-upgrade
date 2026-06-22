@@ -7,6 +7,7 @@ export type State = {
   tag: string;
   forkBranch: string;
   startedAt: number;
+  notes?: string[];
 };
 
 export async function writeState(path: string, state: Omit<State, "startedAt"> & { startedAt?: number }) {

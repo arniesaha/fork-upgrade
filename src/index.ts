@@ -17,6 +17,7 @@ import { runProbes, type ProbeSpec } from "./probes.js";
 import { runRollback } from "./rollback.js";
 import { writeState } from "./state.js";
 import { prompt } from "./checkpoint.js";
+import { verifyCarryIntegrity } from "./carry-integrity.js";
 
 async function main() {
   const { values } = parseArgs({
@@ -86,7 +87,7 @@ async function main() {
   });
 
   await writeState(stateFile, { phase: "branch", tag, forkBranch });
-  await branchAndCherryPick({
+  const branchResult = await branchAndCherryPick({
     repoDir,
     newBranch: forkBranch,
     baseRef: tag,
@@ -100,6 +101,30 @@ async function main() {
       return ans === "proceed";
     },
   });
+
+  const integrity = await verifyCarryIntegrity({
+    repoDir,
+    carries: carry.kept,
+    emptyPicks: branchResult.emptyPicks,
+  });
+  if (integrity.length > 0) {
+    console.log("carry-integrity warnings:");
+    for (const f of integrity) {
+      console.log(`  [${f.kind}] ${f.sha} ${f.subject}: ${f.detail}`);
+    }
+    await writeState(stateFile, {
+      phase: "branch",
+      tag,
+      forkBranch,
+      notes: integrity.map((f) => `${f.kind}:${f.sha}:${f.detail}`),
+    });
+    const ans = await prompt({
+      message: "Carry-integrity warnings above. Proceed anyway?",
+      options: ["proceed", "abort"],
+      yes: values.yes,
+    });
+    if (ans !== "proceed") return;
+  }
 
   await writeState(stateFile, { phase: "gates", tag, forkBranch });
   const gateCmds = [
