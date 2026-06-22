@@ -16,7 +16,7 @@ import { runGates } from "./gates.js";
 import { runCutover } from "./cutover.js";
 import { runProbes, type ProbeSpec } from "./probes.js";
 import { runRollback } from "./rollback.js";
-import { writeState } from "./state.js";
+import { writeState, readState } from "./state.js";
 import { prompt } from "./checkpoint.js";
 import { verifyCarryIntegrity } from "./carry-integrity.js";
 import { resolveLadder } from "./ladder.js";
@@ -29,6 +29,7 @@ type HopCtx = {
   yes: boolean;
   target: string;
   ladder: string[];
+  resume?: boolean;
 };
 
 async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number, final: boolean): Promise<boolean> {
@@ -42,6 +43,7 @@ async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number, final: b
     newBranch: hopBranch,
     baseRef: hopTag,
     shas: carry.kept.map((c) => c.sha),
+    force: ctx.resume === true,
     onConflict: async (sha, files) => {
       const ans = await prompt({
         message: `cherry-pick of ${sha} conflicts in: ${files.join(", ")}\nResolve in your editor, then choose:`,
@@ -135,16 +137,57 @@ async function main() {
       "from-tag": { type: "string" },
       "single-tag": { type: "boolean", default: false },
       "ladder-stop-at": { type: "string" },
+      resume: { type: "boolean", default: false },
     },
   });
-  if (!values.tag) throw new Error("--tag is required");
+  if (!values.resume && !values.tag) throw new Error("--tag is required");
   if (!values["upstream-repo"]) throw new Error("--upstream-repo is required (e.g. openclaw/openclaw)");
 
   const cfg = await loadConfig(values["config-path"]!);
   const repoDir = process.cwd();
+  const stateFile = path.join(repoDir, ".fork-upgrade-state.json");
+
+  if (values.resume) {
+    const prior = await readState(stateFile);
+    if (!prior) {
+      console.error(`--resume: no journal found at ${stateFile}`);
+      process.exit(2);
+    }
+    const resumeTarget = prior.tag;
+    const resumeLadder = prior.ladder ?? [resumeTarget];
+    const resumeIndex = prior.ladderIndex ?? 0;
+    const resumeHopTag = prior.hopTag ?? resumeTarget;
+    const expectedBranch = substitute(cfg.fork.branch_pattern, { tag: resumeHopTag });
+    // Divergence refusal: dirty tree or HEAD not on the journaled hop branch.
+    const { stdout: porcelain } = await execa("git", ["status", "--porcelain"], { cwd: repoDir });
+    const { stdout: head } = await execa("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoDir });
+    // Only treat staged or modified tracked files as dirty (not untracked "??" files)
+    const dirty = porcelain.split("\n").filter((l) => l.trim() !== "" && !l.startsWith("??")).join("\n");
+    if (dirty.trim() !== "") {
+      console.error("refusing to resume: working tree has uncommitted changes");
+      process.exit(2);
+    }
+    if (head.trim() !== expectedBranch) {
+      console.error(`refusing to resume: HEAD is on '${head.trim()}', expected the journaled hop branch '${expectedBranch}'`);
+      process.exit(2);
+    }
+    const carry = await resolveCarryList({
+      manifestPath: path.join(repoDir, cfg.carry.manifest),
+      upstreamRepo: values["upstream-repo"]!,
+      ghPrState: ghPrStateFromCli,
+    });
+    console.log(`resuming from hop ${resumeHopTag} (phase ${prior.phase}, ladder ${resumeLadder.join(" -> ")})`);
+    const ctx: HopCtx = { repoDir, cfg, carry, stateFile, yes: values.yes, target: resumeTarget, ladder: resumeLadder, resume: true };
+    for (let i = resumeIndex; i < resumeLadder.length; i++) {
+      const proceed = await runHop(ctx, resumeLadder[i], i, i === resumeLadder.length - 1);
+      if (!proceed) return;
+    }
+    await writeState(stateFile, { phase: "done", tag: resumeTarget, forkBranch: expectedBranch });
+    return;
+  }
+
   const target = values.tag!;
   const forkBranch = substitute(cfg.fork.branch_pattern, { tag: target });
-  const stateFile = path.join(repoDir, ".fork-upgrade-state.json");
 
   await writeState(stateFile, { phase: "preflight", tag: target, forkBranch });
   const carry = await resolveCarryList({
