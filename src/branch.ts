@@ -9,7 +9,10 @@ export type BranchOptions = {
   onConflict?: (sha: string, conflictedFiles: string[]) => Promise<boolean>;
 };
 
-export async function branchAndCherryPick(opts: BranchOptions): Promise<void> {
+export type BranchResult = { emptyPicks: string[] };
+
+export async function branchAndCherryPick(opts: BranchOptions): Promise<BranchResult> {
+  const emptyPicks: string[] = [];
   await execa("git", ["checkout", "-b", opts.newBranch, opts.baseRef], { cwd: opts.repoDir });
   for (const sha of opts.shas) {
     try {
@@ -17,6 +20,13 @@ export async function branchAndCherryPick(opts: BranchOptions): Promise<void> {
     } catch (err) {
       const e = err as ExecaError;
       const conflicts = await listConflicts(opts.repoDir);
+      if (conflicts.length === 0) {
+        // No conflicted files: the carry is already present upstream (absorbed),
+        // so the cherry-pick is empty. Record it and skip; do not treat as conflict.
+        await execa("git", ["cherry-pick", "--skip"], { cwd: opts.repoDir }).catch(() => {});
+        emptyPicks.push(sha);
+        continue;
+      }
       const retry = opts.onConflict ? await opts.onConflict(sha, conflicts) : false;
       if (retry) {
         await execa("git", ["cherry-pick", "--continue"], { cwd: opts.repoDir });
@@ -28,6 +38,7 @@ export async function branchAndCherryPick(opts: BranchOptions): Promise<void> {
       }
     }
   }
+  return { emptyPicks };
 }
 
 async function listConflicts(repoDir: string): Promise<string[]> {
