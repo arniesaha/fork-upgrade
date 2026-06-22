@@ -114,4 +114,25 @@ describe("branchAndCherryPick", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("force-recreates an existing branch when force is true", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-force-"));
+    const repo = path.join(root, "repo");
+    await fs.mkdir(repo);
+    await execa("git", ["init"], { cwd: repo });
+    await execa("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    await execa("git", ["config", "user.name", "t"], { cwd: repo });
+    await fs.writeFile(path.join(repo, "main.txt"), "main", "utf-8");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-m", "base"], { cwd: repo });
+    await execa("git", ["tag", "v1"], { cwd: repo });
+
+    // first run creates fork/v1
+    await branchAndCherryPick({ repoDir: repo, newBranch: "fork/v1", baseRef: "v1", shas: [] });
+    // second run with force must succeed (recreate), not fail "already exists"
+    const result = await branchAndCherryPick({ repoDir: repo, newBranch: "fork/v1", baseRef: "v1", shas: [], force: true });
+    expect(result.emptyPicks).toEqual([]);
+    const { stdout: branches } = await execa("git", ["branch", "--list", "fork/v1"], { cwd: repo });
+    expect(branches).toContain("fork/v1");
+  });
 });
