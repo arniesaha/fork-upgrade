@@ -10,6 +10,7 @@ const CarryEntrySchema = z.object({
   upstream_search: z.string().optional().default(""),
   enabled: z.boolean().optional().default(true),
   pin: z.boolean().optional().default(false),
+  landed_markers: z.array(z.string()).optional().default([]),
 });
 
 const CarryManifestSchema = z.object({
