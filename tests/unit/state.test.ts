@@ -12,4 +12,21 @@ describe("state", () => {
     const back = await readState(file);
     expect(back?.phase).toBe("backup");
   });
+
+  it("round-trips ladder fields", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "state-ladder-"));
+    const file = path.join(dir, "state.json");
+    await writeState(file, {
+      phase: "gates",
+      tag: "v3",
+      forkBranch: "fork/v3",
+      ladder: ["v2", "v3"],
+      ladderIndex: 1,
+      hopTag: "v3",
+    });
+    const s = await readState(file);
+    expect(s?.ladder).toEqual(["v2", "v3"]);
+    expect(s?.ladderIndex).toBe(1);
+    expect(s?.hopTag).toBe("v3");
+  });
 });
