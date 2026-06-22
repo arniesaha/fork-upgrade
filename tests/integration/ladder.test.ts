@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs/promises";
 import { execa } from "execa";
 
@@ -28,7 +29,7 @@ restart_after = false
 
 // Build an upstream with v1,v2,v2.1-rc,v3 and a fork on v1 with one carry commit.
 async function buildLadderRepo(): Promise<{ fork: string; carrySha: string }> {
-  const root = await fs.mkdtemp(path.join(require("node:os").tmpdir(), "m2-ladder-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "m2-ladder-"));
   const upstream = path.join(root, "upstream");
   const fork = path.join(root, "fork");
   await fs.mkdir(upstream);
@@ -98,5 +99,24 @@ describe("multi-tag ladder", () => {
     expect(exitCode, `stderr: ${stderr}`).toBe(0);
     expect(stdout).toContain("tag ladder: v3");
     expect(stdout).not.toContain("v2 -> v3");
+  });
+
+  it("exits 2 with guard message when branch_pattern lacks {tag} and ladder has multiple hops", async () => {
+    const { fork, carrySha } = await buildLadderRepo();
+    const configNoTag = CONFIG.replace('branch_pattern = "fork/{tag}"', 'branch_pattern = "fork-fixed"');
+    await fs.writeFile(path.join(fork, ".fork-upgrade.toml"), configNoTag, "utf-8");
+    await fs.writeFile(
+      path.join(fork, ".fork-upgrade-carry.toml"),
+      `\n[[commits]]\nsha = "${carrySha}"\nsubject = "fork carry"\n`,
+      "utf-8",
+    );
+    const distEntry = path.resolve("dist/index.js");
+    const { exitCode, stderr } = await execa(
+      "node",
+      [distEntry, "--tag", "v3", "--upstream-repo", "fixture/repo", "--yes"],
+      { cwd: fork, reject: false },
+    );
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("requires '{tag}'");
   });
 });

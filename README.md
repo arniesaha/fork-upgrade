@@ -24,6 +24,13 @@ v0.1 — orchestrator code, integration tests, and an OpenClaw worked example. N
    fork-upgrade --tag v<NEW_UPSTREAM_TAG> --upstream-repo <owner/repo> [--yes] [--dry-run]
    ```
 
+**Multi-tag ladder (automatic):** Given `--tag <target>`, the tool detects the fork's current base tag via `git describe` (override with `--from-tag <tag>`) and walks every stable upstream tag in `(base, target]`. It validates carries and gates at each intermediate hop and cuts over only on the final hop. Flags:
+
+- `--from-tag <tag>` — override base-tag detection instead of using `git describe`.
+- `--single-tag` — skip enumeration; jump straight to the target tag (the v0.1 behavior).
+- `--ladder-stop-at <tag>` — halt after that tag's hop; it becomes the final hop.
+- `--resume` — re-enter the journaled hop/phase from `.fork-upgrade-state.json`; refuses if the working tree has tracked modifications or HEAD is not on the journaled hop branch.
+
 The orchestrator runs through these phases, journaling each one to `.fork-upgrade-state.json`:
 
 `preflight → backup → branch → gates → checkpoint → cutover → probes → (rollback if RED) → done`
@@ -32,7 +39,7 @@ The orchestrator runs through these phases, journaling each one to `.fork-upgrad
 
 `.fork-upgrade.toml` blocks:
 
-- `[upstream]` — `remote`, `tag_pattern`, `fetch_before`.
+- `[upstream]` — `remote`, `tag_pattern`, `fetch_before`, `prerelease_pattern` (default `-(rc|alpha|beta|pre)`, a case-insensitive JS regex; intermediate tags matching it are skipped; the explicit target is never filtered).
 - `[fork]` — `origin_remote`, `branch_pattern` (e.g. `agentweave/{tag}`).
 - `[carry]` — `manifest` path to the carry list.
 - `[backup]` — `anchor_tag`, `push_anchor`, `config_files[]`, `state_archive { paths, output }`.
@@ -78,13 +85,12 @@ Pass `--yes` to auto-confirm checkpoint 1. The rollback prompt is intentionally 
 
 On RED + user-approved rollback, or via the `--rollback` flag (planned), the orchestrator: `git checkout <anchor_tag>`, restores each `config_files[*]` from its `.pre-{tag}` snapshot, optionally re-runs the cutover restart.
 
-## Limitations (v0.1)
+## Limitations
 
-- Single-tag jumps only. Multi-tag (e.g. v5.2 → v5.7 across intermediate tags) is not supported.
 - Cherry-pick conflicts open `$EDITOR` (your shell's default); auto-resolution is out of scope.
 - Cross-platform restart is your config's responsibility — declare the right `cutover.restart` per host (systemd, launchd, supervisor, etc.).
 - `upstream_search` in the carry manifest is actively queried as an advisory (results shown in preflight; it never auto-skips a carry). `upstream_pr` triggers the skip check via `gh pr view`.
-- `--resume` from a journaled phase is planned; v0.1 writes the journal but doesn't yet replay from it.
+- Multi-hop ladders require `{tag}` in `[fork].branch_pattern` so each hop gets a distinct branch. Use `--single-tag` if your pattern lacks `{tag}`.
 
 ## Example
 
