@@ -223,19 +223,31 @@ async function main() {
   if (values["single-tag"]) {
     ladder = [target];
   } else {
-    const resolved = await resolveLadder({
-      repoDir,
-      tagPattern: cfg.upstream.tag_pattern,
-      prereleasePattern: cfg.upstream.prerelease_pattern,
-      fromTag: values["from-tag"],
-      target,
-    });
-    ladder = resolved.ladder;
+    try {
+      const resolved = await resolveLadder({
+        repoDir,
+        tagPattern: cfg.upstream.tag_pattern,
+        prereleasePattern: cfg.upstream.prerelease_pattern,
+        fromTag: values["from-tag"],
+        target,
+      });
+      ladder = resolved.ladder;
+    } catch (err) {
+      console.error(`ladder resolution failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(2);
+    }
   }
   if (values["ladder-stop-at"]) {
     const stop = ladder.indexOf(values["ladder-stop-at"]);
-    if (stop === -1) throw new Error(`--ladder-stop-at '${values["ladder-stop-at"]}' is not in the ladder: ${ladder.join(", ")}`);
+    if (stop === -1) {
+      console.error(`--ladder-stop-at '${values["ladder-stop-at"]}' is not in the ladder: ${ladder.join(", ")}`);
+      process.exit(2);
+    }
     ladder = ladder.slice(0, stop + 1);
+  }
+  if (ladder.length > 1 && !cfg.fork.branch_pattern.includes("{tag}")) {
+    console.error("multi-hop ladder requires '{tag}' in [fork].branch_pattern so each hop gets a distinct branch; add {tag} or pass --single-tag");
+    process.exit(2);
   }
   console.log(`tag ladder: ${ladder.join(" -> ")}`);
 
