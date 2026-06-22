@@ -48,8 +48,8 @@ probe (#11), doctor drift probe (#6), the forklift rebrand and kits (M5).
    adjacent to base), behavior is identical to v0.1. `--single-tag` skips
    enumeration and jumps directly to the target (the old behavior, explicitly).
 4. **Pre-releases excluded by default.** A configurable
-   `[upstream].prerelease_pattern` (default `(?i)-(rc|alpha|beta|pre)`) drops
-   pre-release tags from the ladder.
+   `[upstream].prerelease_pattern` (default `-(rc|alpha|beta|pre)`, a JS regex
+   source matched case-insensitively) drops pre-release tags from the ladder.
 5. **`--resume` included in M2, refuses on divergence.** The ladder needs a
    richer journal (hop index + phase) anyway; resume reads that same journal and
    refuses if the working tree is dirty or HEAD is not on the journaled hop
@@ -104,8 +104,12 @@ export async function resolveLadder(params: {
 **Config (`src/config.ts`).** Add to the `upstream` block:
 
 ```ts
-prerelease_pattern: z.string().default("(?i)-(rc|alpha|beta|pre)"),
+prerelease_pattern: z.string().default("-(rc|alpha|beta|pre)"),
 ```
+
+The pattern is a JS regex *source* string, compiled with the `i` flag
+(`new RegExp(prereleasePattern, "i")`) — matched case-insensitively, no inline
+`(?i)` flag (unsupported by JS `RegExp`).
 
 (Additive; existing configs parse unchanged.)
 
