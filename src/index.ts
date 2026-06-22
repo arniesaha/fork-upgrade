@@ -19,6 +19,99 @@ import { writeState } from "./state.js";
 import { prompt } from "./checkpoint.js";
 import { verifyCarryIntegrity } from "./carry-integrity.js";
 
+type HopCtx = {
+  repoDir: string;
+  cfg: Awaited<ReturnType<typeof loadConfig>>;
+  carry: Awaited<ReturnType<typeof resolveCarryList>>;
+  stateFile: string;
+  yes: boolean;
+  target: string;
+  ladder: string[];
+};
+
+async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number): Promise<boolean> {
+  const { repoDir, cfg, carry, stateFile, yes, target, ladder } = ctx;
+  const hopBranch = substitute(cfg.fork.branch_pattern, { tag: hopTag });
+  const journalBase = { tag: target, forkBranch: hopBranch, ladder, ladderIndex, hopTag };
+
+  await writeState(stateFile, { phase: "branch", ...journalBase });
+  const branchResult = await branchAndCherryPick({
+    repoDir,
+    newBranch: hopBranch,
+    baseRef: hopTag,
+    shas: carry.kept.map((c) => c.sha),
+    onConflict: async (sha, files) => {
+      const ans = await prompt({
+        message: `cherry-pick of ${sha} conflicts in: ${files.join(", ")}\nResolve in your editor, then choose:`,
+        options: ["proceed", "abort"],
+        yes: false,
+      });
+      return ans === "proceed";
+    },
+  });
+
+  const integrity = await verifyCarryIntegrity({ repoDir, carries: carry.kept, emptyPicks: branchResult.emptyPicks });
+  if (integrity.length > 0) {
+    console.log("carry-integrity warnings:");
+    for (const f of integrity) console.log(`  [${f.kind}] ${f.sha} ${f.subject}: ${f.detail}`);
+    await writeState(stateFile, {
+      phase: "branch",
+      ...journalBase,
+      notes: integrity.map((f) => `${f.kind}:${f.sha}:${f.detail}`),
+    });
+    const ans = await prompt({ message: "Carry-integrity warnings above. Proceed anyway?", options: ["proceed", "abort"], yes });
+    if (ans !== "proceed") return false;
+  }
+
+  await writeState(stateFile, { phase: "gates", ...journalBase });
+  const gateCmds = [
+    cfg.gates.install,
+    cfg.gates.typecheck,
+    ...(typeof cfg.gates.test === "string" ? [cfg.gates.test] : cfg.gates.test ?? []),
+    cfg.gates.build,
+  ].filter((s): s is string => typeof s === "string" && s.length > 0);
+  const gates = await runGates({ cwd: repoDir, commands: gateCmds });
+  if (!gates.ok) {
+    console.error(`gate failed at hop ${hopTag}: ${gates.failedCommand}\n${gates.tail}`);
+    process.exit(2);
+  }
+
+  const ans1 = await prompt({ message: "Gates passed. Push branch + run cutover restart?", options: ["proceed", "abort"], yes });
+  if (ans1 !== "proceed") return false;
+
+  await writeState(stateFile, { phase: "cutover", ...journalBase });
+  const cut = await runCutover({ cwd: repoDir, restartCmd: cfg.cutover.restart, verifyCmd: cfg.cutover.verify });
+  if (!cut.ok) {
+    console.error(`cutover verify failed:\n${cut.verifyOutput}`);
+    process.exit(2);
+  }
+
+  await writeState(stateFile, { phase: "probes", ...journalBase });
+  const probes: ProbeSpec[] = cfg.probes.post_cutover.map((p) => ({
+    name: p.name,
+    cmd: substitute(p.cmd, { tag: hopTag, fork_branch: hopBranch }),
+    parse: p.parse,
+    optional: p.optional,
+  }));
+  const probeResult = await runProbes({ cwd: repoDir, probes });
+  console.log(`probes: ${probeResult.classification}`);
+  for (const f of probeResult.findings) console.log(`  [${f.level}] ${f.probe}: ${f.code} — ${f.message}`);
+  if (probeResult.classification === "RED") {
+    const rollAns = await prompt({ message: "Probes RED. Roll back?", options: ["proceed", "abort"], yes: false });
+    if (rollAns === "proceed") {
+      await runRollback({
+        repoDir,
+        anchorTag: substitute(cfg.backup.anchor_tag, { fork_branch: substitute(cfg.fork.branch_pattern, { tag: target }), tag: target }),
+        configRestores: cfg.backup.config_files.map((live) => ({ live, snapshot: `${live}.pre-${target}` })),
+      });
+      if (cfg.rollback.restart_after) {
+        await runCutover({ cwd: repoDir, restartCmd: cfg.cutover.restart, verifyCmd: cfg.cutover.verify });
+      }
+    }
+  }
+  return true;
+}
+
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -34,11 +127,11 @@ async function main() {
 
   const cfg = await loadConfig(values["config-path"]!);
   const repoDir = process.cwd();
-  const tag = values.tag!;
-  const forkBranch = substitute(cfg.fork.branch_pattern, { tag });
+  const target = values.tag!;
+  const forkBranch = substitute(cfg.fork.branch_pattern, { tag: target });
   const stateFile = path.join(repoDir, ".fork-upgrade-state.json");
 
-  await writeState(stateFile, { phase: "preflight", tag, forkBranch });
+  await writeState(stateFile, { phase: "preflight", tag: target, forkBranch });
   const carry = await resolveCarryList({
     manifestPath: path.join(repoDir, cfg.carry.manifest),
     upstreamRepo: values["upstream-repo"]!,
@@ -68,128 +161,31 @@ async function main() {
     );
   }
 
+  const ladder = [target];
+  console.log(`tag ladder: ${ladder.join(" -> ")}`);
+
   if (values["dry-run"]) return;
 
-  await writeState(stateFile, { phase: "backup", tag, forkBranch });
+  await writeState(stateFile, { phase: "backup", tag: target, forkBranch });
   await runBackup({
     repoDir,
-    anchorTag: substitute(cfg.backup.anchor_tag, { fork_branch: forkBranch, tag }),
+    anchorTag: substitute(cfg.backup.anchor_tag, { fork_branch: forkBranch, tag: target }),
     pushAnchor: cfg.backup.push_anchor,
     originRemote: cfg.fork.origin_remote,
     configFiles: cfg.backup.config_files,
-    configSnapshotSuffix: `.pre-${tag}`,
+    configSnapshotSuffix: `.pre-${target}`,
     stateArchive: cfg.backup.state_archive
-      ? {
-          paths: cfg.backup.state_archive.paths,
-          output: substitute(cfg.backup.state_archive.output, { tag }),
-        }
+      ? { paths: cfg.backup.state_archive.paths, output: substitute(cfg.backup.state_archive.output, { tag: target }) }
       : undefined,
   });
 
-  await writeState(stateFile, { phase: "branch", tag, forkBranch });
-  const branchResult = await branchAndCherryPick({
-    repoDir,
-    newBranch: forkBranch,
-    baseRef: tag,
-    shas: carry.kept.map((c) => c.sha),
-    onConflict: async (sha, files) => {
-      const ans = await prompt({
-        message: `cherry-pick of ${sha} conflicts in: ${files.join(", ")}\nResolve in your editor, then choose:`,
-        options: ["proceed", "abort"],
-        yes: false,
-      });
-      return ans === "proceed";
-    },
-  });
-
-  const integrity = await verifyCarryIntegrity({
-    repoDir,
-    carries: carry.kept,
-    emptyPicks: branchResult.emptyPicks,
-  });
-  if (integrity.length > 0) {
-    console.log("carry-integrity warnings:");
-    for (const f of integrity) {
-      console.log(`  [${f.kind}] ${f.sha} ${f.subject}: ${f.detail}`);
-    }
-    await writeState(stateFile, {
-      phase: "branch",
-      tag,
-      forkBranch,
-      notes: integrity.map((f) => `${f.kind}:${f.sha}:${f.detail}`),
-    });
-    const ans = await prompt({
-      message: "Carry-integrity warnings above. Proceed anyway?",
-      options: ["proceed", "abort"],
-      yes: values.yes,
-    });
-    if (ans !== "proceed") return;
+  const ctx: HopCtx = { repoDir, cfg, carry, stateFile, yes: values.yes, target, ladder };
+  for (let i = 0; i < ladder.length; i++) {
+    const proceed = await runHop(ctx, ladder[i], i);
+    if (!proceed) return;
   }
 
-  await writeState(stateFile, { phase: "gates", tag, forkBranch });
-  const gateCmds = [
-    cfg.gates.install,
-    cfg.gates.typecheck,
-    ...(typeof cfg.gates.test === "string" ? [cfg.gates.test] : cfg.gates.test ?? []),
-    cfg.gates.build,
-  ].filter((s): s is string => typeof s === "string" && s.length > 0);
-  const gates = await runGates({ cwd: repoDir, commands: gateCmds });
-  if (!gates.ok) {
-    console.error(`gate failed: ${gates.failedCommand}\n${gates.tail}`);
-    process.exit(2);
-  }
-
-  const ans1 = await prompt({
-    message: "Gates passed. Push branch + run cutover restart?",
-    options: ["proceed", "abort"],
-    yes: values.yes,
-  });
-  if (ans1 !== "proceed") return;
-
-  await writeState(stateFile, { phase: "cutover", tag, forkBranch });
-  const cut = await runCutover({
-    cwd: repoDir,
-    restartCmd: cfg.cutover.restart,
-    verifyCmd: cfg.cutover.verify,
-  });
-  if (!cut.ok) {
-    console.error(`cutover verify failed:\n${cut.verifyOutput}`);
-    process.exit(2);
-  }
-
-  await writeState(stateFile, { phase: "probes", tag, forkBranch });
-  const probes: ProbeSpec[] = cfg.probes.post_cutover.map((p) => ({
-    name: p.name,
-    cmd: substitute(p.cmd, { tag, fork_branch: forkBranch }),
-    parse: p.parse,
-    optional: p.optional,
-  }));
-  const probeResult = await runProbes({ cwd: repoDir, probes });
-  console.log(`probes: ${probeResult.classification}`);
-  for (const f of probeResult.findings) {
-    console.log(`  [${f.level}] ${f.probe}: ${f.code} — ${f.message}`);
-  }
-  if (probeResult.classification === "RED") {
-    const rollAns = await prompt({
-      message: "Probes RED. Roll back?",
-      options: ["proceed", "abort"],
-      yes: false,
-    });
-    if (rollAns === "proceed") {
-      await runRollback({
-        repoDir,
-        anchorTag: substitute(cfg.backup.anchor_tag, { fork_branch: forkBranch, tag }),
-        configRestores: cfg.backup.config_files.map((live) => ({
-          live,
-          snapshot: `${live}.pre-${tag}`,
-        })),
-      });
-      if (cfg.rollback.restart_after) {
-        await runCutover({ cwd: repoDir, restartCmd: cfg.cutover.restart, verifyCmd: cfg.cutover.verify });
-      }
-    }
-  }
-  await writeState(stateFile, { phase: "done", tag, forkBranch });
+  await writeState(stateFile, { phase: "done", tag: target, forkBranch });
 }
 
 main().catch((err) => {
