@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import path from "node:path";
+import { execa } from "execa";
 import { loadConfig, substitute } from "./config.js";
 import {
   resolveCarryList,
@@ -18,6 +19,7 @@ import { runRollback } from "./rollback.js";
 import { writeState } from "./state.js";
 import { prompt } from "./checkpoint.js";
 import { verifyCarryIntegrity } from "./carry-integrity.js";
+import { resolveLadder } from "./ladder.js";
 
 type HopCtx = {
   repoDir: string;
@@ -29,7 +31,7 @@ type HopCtx = {
   ladder: string[];
 };
 
-async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number): Promise<boolean> {
+async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number, final: boolean): Promise<boolean> {
   const { repoDir, cfg, carry, stateFile, yes, target, ladder } = ctx;
   const hopBranch = substitute(cfg.fork.branch_pattern, { tag: hopTag });
   const journalBase = { tag: target, forkBranch: hopBranch, ladder, ladderIndex, hopTag };
@@ -59,8 +61,10 @@ async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number): Promise
       ...journalBase,
       notes: integrity.map((f) => `${f.kind}:${f.sha}:${f.detail}`),
     });
-    const ans = await prompt({ message: "Carry-integrity warnings above. Proceed anyway?", options: ["proceed", "abort"], yes });
-    if (ans !== "proceed") return false;
+    if (final) {
+      const ans = await prompt({ message: "Carry-integrity warnings above. Proceed anyway?", options: ["proceed", "abort"], yes });
+      if (ans !== "proceed") return false;
+    }
   }
 
   await writeState(stateFile, { phase: "gates", ...journalBase });
@@ -74,6 +78,14 @@ async function runHop(ctx: HopCtx, hopTag: string, ladderIndex: number): Promise
   if (!gates.ok) {
     console.error(`gate failed at hop ${hopTag}: ${gates.failedCommand}\n${gates.tail}`);
     process.exit(2);
+  }
+
+  if (!final) {
+    // Intermediate validation hop passed: discard the throwaway branch and move on.
+    // Detach to the upstream tag first so the branch we're on can be deleted.
+    await execa("git", ["checkout", hopTag], { cwd: repoDir });
+    await execa("git", ["branch", "-D", hopBranch], { cwd: repoDir });
+    return true;
   }
 
   const ans1 = await prompt({ message: "Gates passed. Push branch + run cutover restart?", options: ["proceed", "abort"], yes });
@@ -120,6 +132,9 @@ async function main() {
       "upstream-repo": { type: "string" },
       yes: { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
+      "from-tag": { type: "string" },
+      "single-tag": { type: "boolean", default: false },
+      "ladder-stop-at": { type: "string" },
     },
   });
   if (!values.tag) throw new Error("--tag is required");
@@ -161,7 +176,24 @@ async function main() {
     );
   }
 
-  const ladder = [target];
+  let ladder: string[];
+  if (values["single-tag"]) {
+    ladder = [target];
+  } else {
+    const resolved = await resolveLadder({
+      repoDir,
+      tagPattern: cfg.upstream.tag_pattern,
+      prereleasePattern: cfg.upstream.prerelease_pattern,
+      fromTag: values["from-tag"],
+      target,
+    });
+    ladder = resolved.ladder;
+  }
+  if (values["ladder-stop-at"]) {
+    const stop = ladder.indexOf(values["ladder-stop-at"]);
+    if (stop === -1) throw new Error(`--ladder-stop-at '${values["ladder-stop-at"]}' is not in the ladder: ${ladder.join(", ")}`);
+    ladder = ladder.slice(0, stop + 1);
+  }
   console.log(`tag ladder: ${ladder.join(" -> ")}`);
 
   if (values["dry-run"]) return;
@@ -181,7 +213,7 @@ async function main() {
 
   const ctx: HopCtx = { repoDir, cfg, carry, stateFile, yes: values.yes, target, ladder };
   for (let i = 0; i < ladder.length; i++) {
-    const proceed = await runHop(ctx, ladder[i], i);
+    const proceed = await runHop(ctx, ladder[i], i, i === ladder.length - 1);
     if (!proceed) return;
   }
 
