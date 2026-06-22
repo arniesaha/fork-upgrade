@@ -14,6 +14,7 @@ const ConfigSchema = z.object({
     remote: z.string().default("upstream"),
     tag_pattern: z.string().default("v*"),
     fetch_before: z.boolean().default(true),
+    prerelease_pattern: z.string().default("-(rc|alpha|beta|pre)"),
   }),
   fork: z.object({
     origin_remote: z.string().default("origin"),
