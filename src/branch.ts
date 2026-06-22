@@ -5,6 +5,7 @@ export type BranchOptions = {
   newBranch: string;
   baseRef: string;
   shas: string[];
+  force?: boolean;
   /** Called when a cherry-pick conflicts. Resolve to true to retry, false to abort. */
   onConflict?: (sha: string, conflictedFiles: string[]) => Promise<boolean>;
 };
@@ -13,7 +14,7 @@ export type BranchResult = { emptyPicks: string[] };
 
 export async function branchAndCherryPick(opts: BranchOptions): Promise<BranchResult> {
   const emptyPicks: string[] = [];
-  await execa("git", ["checkout", "-b", opts.newBranch, opts.baseRef], { cwd: opts.repoDir });
+  await execa("git", ["checkout", opts.force ? "-B" : "-b", opts.newBranch, opts.baseRef], { cwd: opts.repoDir });
   for (const sha of opts.shas) {
     try {
       await execa("git", ["cherry-pick", sha], { cwd: opts.repoDir });
