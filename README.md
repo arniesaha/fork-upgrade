@@ -51,8 +51,11 @@ Placeholders: `{tag}` and `{fork_branch}` are substituted in any string field.
 [[commits]]
 sha = "<short or full SHA>"
 subject = "<commit subject>"
-upstream_pr = "<PR number, optional>"   # if set and merged, the orchestrator skips this commit
-upstream_search = "<text fallback>"     # informational; not yet auto-searched
+upstream_pr = "<PR number, optional>"       # if set and merged, orchestrator skips this commit
+upstream_search = "<text fallback>"         # actively queried as ADVISORY (never auto-skips)
+enabled = true                              # default true; false parks the carry (shown in preflight, skipped from cherry-pick)
+pin = false                                 # default false; true carries unconditionally — never auto-skipped even if upstream_pr is set/merged
+landed_markers = ["SOME_FUNC", "some-id"]  # strings asserted to exist in tree after replay; missing ones warn at integrity checkpoint
 ```
 
 ## Probes
@@ -80,7 +83,7 @@ On RED + user-approved rollback, or via the `--rollback` flag (planned), the orc
 - Single-tag jumps only. Multi-tag (e.g. v5.2 → v5.7 across intermediate tags) is not supported.
 - Cherry-pick conflicts open `$EDITOR` (your shell's default); auto-resolution is out of scope.
 - Cross-platform restart is your config's responsibility — declare the right `cutover.restart` per host (systemd, launchd, supervisor, etc.).
-- `upstream_search` in the carry manifest is descriptive, not yet auto-queried (`upstream_pr` triggers the active check via `gh pr view`).
+- `upstream_search` in the carry manifest is actively queried as an advisory (results shown in preflight; it never auto-skips a carry). `upstream_pr` triggers the skip check via `gh pr view`.
 - `--resume` from a journaled phase is planned; v0.1 writes the journal but doesn't yet replay from it.
 
 ## Example

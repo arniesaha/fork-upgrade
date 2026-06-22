@@ -56,7 +56,7 @@ landed_markers = ["NONEXISTENT_MARKER_XYZ"]
     const combined = stdout + stderr;
     expect(combined).toContain("carry-integrity warnings");
     expect(combined).toContain("missing-marker");
-    // proceeded through to probes (warning surfaced BEFORE cutover/probes)
+    // proceeded through to probes (warning surfaced before probes)
     expect(combined).toContain("probes: GREEN");
     expect(combined.indexOf("carry-integrity warnings")).toBeLessThan(combined.indexOf("probes: GREEN"));
   });

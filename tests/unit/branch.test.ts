@@ -71,4 +71,47 @@ describe("branchAndCherryPick", () => {
     const { stdout: branches } = await execa("git", ["branch", "--list", "fork/v1"], { cwd: repo });
     expect(branches).toContain("fork/v1");
   });
+
+  it("rejects when cherry-picking a merge commit without -m (hard failure, not absorbed)", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "branch-merge-"));
+    const repo = path.join(root, "repo");
+    await fs.mkdir(repo);
+    await execa("git", ["init"], { cwd: repo });
+    await execa("git", ["config", "user.email", "t@example.com"], { cwd: repo });
+    await execa("git", ["config", "user.name", "t"], { cwd: repo });
+    // initial commit on default branch → tag v1
+    await fs.writeFile(path.join(repo, "main.txt"), "main", "utf-8");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-m", "base"], { cwd: repo });
+    await execa("git", ["tag", "v1"], { cwd: repo });
+    // create feature branch off v1
+    await execa("git", ["checkout", "-b", "feature"], { cwd: repo });
+    await fs.writeFile(path.join(repo, "feature.txt"), "f", "utf-8");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-m", "feature commit"], { cwd: repo });
+    // go back to default branch and add another commit
+    await execa("git", ["checkout", "-"], { cwd: repo });
+    await fs.writeFile(path.join(repo, "extra.txt"), "e", "utf-8");
+    await execa("git", ["add", "."], { cwd: repo });
+    await execa("git", ["commit", "-m", "extra on main"], { cwd: repo });
+    // create a merge commit (no-ff)
+    await execa(
+      "git",
+      ["-c", "user.email=t@example.com", "-c", "user.name=t", "merge", "--no-ff", "feature", "-m", "merge feature"],
+      { cwd: repo },
+    );
+    const { stdout: mergeShaRaw } = await execa("git", ["rev-parse", "HEAD"], { cwd: repo });
+    const mergeSha = mergeShaRaw.trim();
+
+    // Attempting to cherry-pick a merge commit without -m must REJECT (hard failure),
+    // not silently absorb it into emptyPicks.
+    await expect(
+      branchAndCherryPick({
+        repoDir: repo,
+        newBranch: "fork/v1",
+        baseRef: "v1",
+        shas: [mergeSha],
+      }),
+    ).rejects.toThrow();
+  });
 });
