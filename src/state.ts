@@ -8,6 +8,9 @@ export type State = {
   forkBranch: string;
   startedAt: number;
   notes?: string[];
+  ladder?: string[];
+  ladderIndex?: number;
+  hopTag?: string;
 };
 
 export async function writeState(path: string, state: Omit<State, "startedAt"> & { startedAt?: number }) {
