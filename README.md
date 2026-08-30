@@ -44,6 +44,13 @@ The orchestrator runs through these phases, journaling each one to `.fork-upgrad
 - `[carry]` — `manifest` path to the carry list.
 - `[backup]` — `anchor_tag`, `push_anchor`, `config_files[]`, `state_archive { paths, output }`.
 - `[gates]` — `install`, `typecheck`, `test` (string or `[string]`), `build`.
+
+  **Stale-cache isolation:** Each `runGates` invocation creates a unique temporary directory
+  and sets `OPENCLAW_VITEST_FS_MODULE_CACHE_PATH` (and any future related cache variables)
+  inside it. All commands in one run share that isolated cache root; different invocations
+  never do. The temporary directory is cleaned up after both success and failure. This
+  prevents a gate worktree from false-passing because it read a stale Vitest module cache
+  from a prior run.
 - `[cutover]` — `restart`, `verify`.
 - `[probes]` — `post_cutover[]` of `{ name, cmd, parse: "json"|"exit", optional }`.
 - `[rollback]` — `restart_after`.
